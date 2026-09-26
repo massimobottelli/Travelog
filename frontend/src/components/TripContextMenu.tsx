@@ -30,6 +30,12 @@ export interface TripContextMenuProps {
    */
   onEditDays?: () => void;
   onSplit: () => void;
+  /**
+   * Downloads the trip as an ICS calendar event (RFC 5545). When
+   * provided, the "Aggiungi al Calendario" entry appears before
+   * "Elimina viaggio".
+   */
+  onExportCalendar?: () => void;
   onDelete: () => void;
   /** Accessible label for the trigger button. */
   label?: string;
@@ -41,6 +47,7 @@ export default function TripContextMenu({
   onEditDates,
   onEditDays,
   onSplit,
+  onExportCalendar,
   onDelete,
   label,
   disabled = false,
@@ -166,6 +173,16 @@ export default function TripContextMenu({
             >
               <ScissorsIcon size={15} /> Dividi viaggio
             </button>
+            {onExportCalendar && (
+              <button
+                type="button"
+                role="menuitem"
+                className="trip-context-item"
+                onClick={select(onExportCalendar)}
+              >
+                <CalendarIcon size={15} /> Aggiungi al Calendario
+              </button>
+            )}
             <button
               type="button"
               role="menuitem"

@@ -722,6 +722,41 @@ paths:
               schema:
                 $ref: "#/components/schemas/ApiError"
 
+  /trips/{tripId}/ics:
+    get:
+      tags: [Trips]
+      operationId: exportTripIcs
+      summary: Export a trip as an ICS calendar event
+      description: |
+        Downloads an iCalendar (RFC 5545) file representing the trip as a
+        single all-day event. The event spans the trip interval (DTEND is
+        exclusive per RFC 5545 §3.6.1). The SUMMARY is the trip name; the
+        LOCATION is the locality with the most photos in the trip; the
+        DESCRIPTION carries the full locality hierarchy plus the
+        "Creato da Travelog" signature. When no locality is available
+        (manual trip without photos), LOCATION is omitted and DESCRIPTION
+        contains only the signature.
+      parameters:
+        - name: tripId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: ICS calendar file for the trip
+          content:
+            text/calendar:
+              schema:
+                type: string
+        "404":
+          description: Trip not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
   /trips/{tripId}/split:
     post:
       tags: [Trips]

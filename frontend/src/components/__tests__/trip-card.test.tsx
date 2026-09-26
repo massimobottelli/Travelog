@@ -129,9 +129,9 @@ describe("TripContextMenu (per-trip gear, UI §2.1)", () => {
         .getAllByRole("menuitem")
         .map((item) => item.textContent?.trim()),
     ).toEqual([
+      "Modifica viaggio",
       "Rinomina",
       "Modifica date",
-      "Modifica viaggio",
       "Dividi viaggio",
       "Elimina viaggio",
     ]);
@@ -180,5 +180,48 @@ describe("TripContextMenu (per-trip gear, UI §2.1)", () => {
 
     fireEvent.click(gearFor());
     expect(onToggle).not.toHaveBeenCalled();
+  });
+
+  it("shows 'Aggiungi al Calendario' before 'Elimina viaggio' when onExportCalendar is provided", () => {
+    const onExportCalendar = vi.fn();
+    render(<TripCard {...baseProps({ onExportCalendar })} />);
+
+    fireEvent.click(gearFor());
+    const menu = screen.getByRole("menu");
+    const items = within(menu)
+      .getAllByRole("menuitem")
+      .map((item) => item.textContent?.trim());
+    // "Aggiungi al Calendario" appears before "Elimina viaggio"
+    expect(items).toEqual([
+      "Rinomina",
+      "Modifica date",
+      "Dividi viaggio",
+      "Aggiungi al Calendario",
+      "Elimina viaggio",
+    ]);
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Aggiungi al Calendario" }));
+    expect(onExportCalendar).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("menu")).toBeNull(); // closes after the action
+  });
+
+  it("shows 'Aggiungi al Calendario' after 'Dividi viaggio' when both are provided", () => {
+    const onEditDays = vi.fn();
+    const onExportCalendar = vi.fn();
+    render(<TripCard {...baseProps({ onEditDays, onExportCalendar })} />);
+
+    fireEvent.click(gearFor());
+    const menu = screen.getByRole("menu");
+    const items = within(menu)
+      .getAllByRole("menuitem")
+      .map((item) => item.textContent?.trim());
+    expect(items).toEqual([
+      "Modifica viaggio",
+      "Rinomina",
+      "Modifica date",
+      "Dividi viaggio",
+      "Aggiungi al Calendario",
+      "Elimina viaggio",
+    ]);
   });
 });

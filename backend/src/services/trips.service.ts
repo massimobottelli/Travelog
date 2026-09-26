@@ -15,6 +15,7 @@ import type { PoolClient } from "pg";
 import { NotFoundError, ConflictError, ValidationError } from "../models/errors.js";
 import { addDays } from "../domain/trip-rules.js";
 import { buildTripsCsv } from "../utils/trips-export.js";
+import { buildTripIcs, type IcsLocality } from "../utils/ics.js";
 import logger from "../config/logger.js";
 
 export interface TripQueryOptions {
@@ -498,6 +499,42 @@ class TripsService {
       await tripsRepository.deleteManualDaysOutsideRange(id, updated.startDate, updated.endDate);
     }
     return updated;
+  }
+
+  /**
+   * Generate an ICS (iCalendar, RFC 5545) document for a single trip.
+   * The event is an all-day event spanning the trip interval; the
+   * LOCATION is the locality with the most photos in the trip, the
+   * DESCRIPTION carries the full hierarchy plus the "Creato da Travelog"
+   * signature. Returns the ICS string and the sanitized trip name
+   * (for the Content-Disposition filename).
+   */
+  async exportTripIcs(id: number): Promise<{ ics: string; tripName: string }> {
+    const trip = await tripsRepository.getTrip(id);
+    if (!trip) throw new NotFoundError("Trip", id);
+
+    const topLocality = await tripsRepository.getTopLocalityForTrip(
+      trip.id,
+      trip.startDate,
+      trip.endDate,
+    );
+
+    const locality: IcsLocality | null = topLocality
+      ? {
+          name: topLocality.name,
+          county: topLocality.county,
+          region: topLocality.region,
+          country: topLocality.country,
+        }
+      : null;
+
+    const ics = buildTripIcs(
+      { id: trip.id, name: trip.name, startDate: trip.startDate, endDate: trip.endDate },
+      locality,
+      new Date(),
+    );
+
+    return { ics, tripName: trip.name };
   }
 }
 

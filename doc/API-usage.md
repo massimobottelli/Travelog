@@ -625,6 +625,29 @@ curl -X DELETE http://localhost:3000/api/trips/282
 
 **Errori:** `404` `trip_not_found`.
 
+### `GET /api/trips/{tripId}/ics`
+
+Esporta un singolo viaggio come file ICS (iCalendar, RFC 5545) da importare
+in qualsiasi applicazione calendario (Google Calendar, Apple Calendar,
+Outlook, …). L'evento è un evento giornaliero (all-day) che copre l'intervallo
+del viaggio: `DTSTART` è la data di inizio, `DTEND` è il giorno successivo alla
+data di fine (esclusivo, come previsto da RFC 5545 §3.6.1).
+
+Il campo `SUMMARY` è il nome del viaggio. Il campo `LOCATION` è la località
+con più foto nel viaggio (aggregata su tutte le giornate). Il campo
+`DESCRIPTION` contiene la gerarchia amministrativa completa della località
+(nome, provincia, regione, paese) seguita dalla nota "Creato da Travelog".
+Quando il viaggio non ha località (viaggio manuale senza foto), `LOCATION` è
+omesso e `DESCRIPTION` contiene solo "Creato da Travelog".
+
+```bash
+curl -o viaggio.ics "http://localhost:3000/api/trips/19/ics"
+```
+
+**Risposta (200):** `text/calendar`.
+
+**Errori:** `404` `trip_not_found`.
+
 ### `GET /api/trips/export`
 
 Esporta in CSV tutti i viaggi attivi, con una riga per giorno/località visitata
@@ -1238,6 +1261,7 @@ Gli errori non espongono mai stack trace, query SQL o dettagli del filesystem.
 | `PATCH` | `/api/trips/{tripId}` | Rinomina / cambia date | 200 |
 | `PUT` | `/api/trips/{tripId}/days` | Sostituzione giorni viaggio | 200 |
 | `DELETE` | `/api/trips/{tripId}` | Cancella viaggio | 204 |
+| `GET` | `/api/trips/{tripId}/ics` | Export viaggio come evento calendario (ICS) | 200 |
 | `GET` | `/api/trips/{tripId}/map` | Dati mappa viaggio | 200 |
 | `GET` | `/api/trips/map` | Mappa panoramica (heatmap, snapshot cachato) | 200 |
 | `POST` | `/api/trips/map/recalculate` | Ricalcolo esplicito cache mappa panoramica | 200 |

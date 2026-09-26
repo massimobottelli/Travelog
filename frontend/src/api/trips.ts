@@ -84,6 +84,16 @@ export function exportTripsCsv(): Promise<void> {
   return apiDownload("/trips/export", "travelog-viaggi.csv");
 }
 
+/**
+ * Download the ICS (iCalendar, RFC 5545) export of a single trip. The
+ * file can be imported into any calendar application (Google Calendar,
+ * Apple Calendar, Outlook, …). The filename comes from the
+ * Content-Disposition header.
+ */
+export function exportTripIcs(tripId: number): Promise<void> {
+  return apiDownload(`/trips/${tripId}/ics`, `travelog-viaggio-${tripId}.ics`);
+}
+
 /** Get trip map visualization data — one marker per unique locality, colored by region. */
 export function getTripMap(tripId: number): Promise<TripMapData> {
   return apiRequest<TripMapData>(`/trips/${tripId}/map`);

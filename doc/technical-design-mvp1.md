@@ -1777,6 +1777,57 @@ il modal si apre **subito sotto il titolo, prima della lista viaggi**:
 
 ---
 
+# 47ter. Esportazione viaggio come evento calendario (ICS)
+
+Estensione richiesta dall'utente: esportare un singolo viaggio come file ICS
+(iCalendar, RFC 5545) da importare in qualsiasi applicazione calendario
+(Google Calendar, Apple Calendar, Outlook, …).
+
+## Endpoint
+
+`GET /trips/{tripId}/ics` — operazione di sola lettura, idempotente, coerente
+con l'export CSV (`GET /trips/export`). Risponde con `text/calendar` e
+`Content-Disposition: attachment`.
+
+## Formato ICS
+
+L'evento è un all-day event (VALUE=DATE) che copre l'intervallo del viaggio:
+
+- **SUMMARY**: nome del viaggio
+- **DTSTART;VALUE=DATE**: data di inizio (YYYYMMDD)
+- **DTEND;VALUE=DATE**: giorno successivo alla data di fine (YYYYMMDD, esclusivo
+  per RFC 5545 §3.6.1)
+- **LOCATION**: nome della località con più foto nel viaggio
+- **DESCRIPTION**: gerarchia amministrativa completa (nome, provincia, regione,
+  paese) seguita da "Creato da Travelog"
+- **UID**: `trip-{id}@travelog`
+- **DTSTAMP**: timestamp UTC di generazione
+
+Quando il viaggio non ha località (viaggio manuale senza foto), `LOCATION` è
+omesso e `DESCRIPTION` contiene solo "Creato da Travelog".
+
+## Località con più foto
+
+Il repository `getTopLocalityForTrip(tripId, startDate, endDate)` aggrega le
+`presences` nell'intervallo del viaggio raggruppando per chiave località
+(`name|county|region`, stessa chiave del dettaglio §6.3/§7.2) e somma i
+`photo_count`. Unisce le località dei giorni manuali (`manual_trip_day_localities`,
+`photoCount=0`) solo se non già presenti nelle presenze. Restituisce la località
+con il totale foto maggiore, o `null` se il viaggio non ha alcuna località.
+
+Nessuna migration: la query usa tabelle esistenti (`presences`,
+`manual_trip_day_localities`, `localities`).
+
+## UI
+
+Voce **"Aggiungi al Calendario"** nel menu contestuale del viaggio
+(`TripContextMenu`), posizionata **prima di "Elimina viaggio"**. L'azione
+invoca `exportTripIcs(tripId)` dal modulo API `trips.ts` (nessun `fetch`
+diretto nel componente, regola §6). L'handler in `TripsPage` gestisce
+l'errore attraverso il messaggio di pagina.
+
+---
+
 # 48. Audit trail dei viaggi
 
 Le operazioni distruttive dal punto di vista logico non devono eliminare lo storico.
@@ -1923,7 +1974,7 @@ TripsPage                       (dati, operazioni, dialoghi)
   creazione manuale (`TripDaysModal`) e la conferma di unione (`MergeDialog`).
 * **`TripContextMenu`** — menu contestuale (icona ingranaggio) del singolo
   viaggio con *Rinomina / Modifica date / Modifica viaggio / Dividi viaggio /
-  Elimina viaggio*. La voce *Modifica viaggio* compare solo sui viaggi
+  Aggiungi al Calendario / Elimina viaggio*. La voce *Modifica viaggio* compare solo sui viaggi
   `active` e abilita la modifica inline di giorni/località nella card espansa
   (§51). Le azioni sono delegate al parent, che riusa `TripDialog` e la
   conferma di eliminazione esistenti.

@@ -485,6 +485,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/trips/{tripId}/ics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export a trip as an ICS calendar event
+         * @description Downloads an iCalendar (RFC 5545) file representing the trip as a
+         *     single all-day event. The event spans the trip interval (DTEND is
+         *     exclusive per RFC 5545 §3.6.1). The SUMMARY is the trip name; the
+         *     LOCATION is the locality with the most photos in the trip; the
+         *     DESCRIPTION carries the full locality hierarchy plus the
+         *     "Creato da Travelog" signature. When no locality is available
+         *     (manual trip without photos), LOCATION is omitted and DESCRIPTION
+         *     contains only the signature.
+         */
+        get: operations["exportTripIcs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/trips/{tripId}/split": {
         parameters: {
             query?: never;
@@ -1949,6 +1976,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TripMapData"];
+                };
+            };
+            /** @description Trip not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    exportTripIcs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tripId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ICS calendar file for the trip */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/calendar": string;
                 };
             };
             /** @description Trip not found */

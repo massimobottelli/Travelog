@@ -37,6 +37,12 @@ export interface TripCardProps {
    */
   onEditDays?: () => void;
   onSplit: () => void;
+  /**
+   * Downloads the trip as an ICS calendar event. When provided, the
+   * "Aggiungi al Calendario" entry appears in the context menu before
+   * "Elimina viaggio".
+   */
+  onExportCalendar?: () => void;
   onDelete: () => void;
   /** Merge-selection mode: shows a checkbox to include the trip. */
   mergeMode?: boolean;
@@ -61,6 +67,7 @@ export default function TripCard({
   onEditDates,
   onEditDays,
   onSplit,
+  onExportCalendar,
   onDelete,
   mergeMode = false,
   selected = false,
@@ -144,6 +151,7 @@ export default function TripCard({
           onEditDates={onEditDates}
           onEditDays={onEditDays}
           onSplit={onSplit}
+          onExportCalendar={onExportCalendar}
           onDelete={onDelete}
         />
       </div>

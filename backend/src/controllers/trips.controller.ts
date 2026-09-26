@@ -121,6 +121,29 @@ class TripsController {
   async recalculateTripsOverviewMap(_req: Request, res: Response): Promise<void> {
     res.status(200).json(await tripMapService.recalculateOverviewMap());
   }
+
+  /**
+   * ICS (iCalendar, RFC 5545) export of a single trip. Responds with a
+   * text/calendar attachment: the event spans the trip interval as an
+   * all-day event; the LOCATION is the locality with the most photos,
+   * the DESCRIPTION carries the hierarchy plus the "Creato da Travelog"
+   * signature.
+   */
+  async exportTripIcs(req: Request, res: Response): Promise<void> {
+    const tripId = Number(req.params.tripId);
+    const { ics, tripName } = await tripsService.exportTripIcs(tripId);
+    // Sanitize the trip name for the filename: keep only safe characters.
+    const safeName = (tripName || "viaggio")
+      .replace(/[^a-zA-Z0-9À-ÿ_.-]/g, "_")
+      .replace(/_+/g, "_")
+      .replace(/^_|_$/g, "")
+      .slice(0, 60);
+    res
+      .status(200)
+      .set("Content-Type", "text/calendar; charset=utf-8")
+      .set("Content-Disposition", `attachment; filename="travelog-${safeName}.ics"`)
+      .send(ics);
+  }
 }
 
 export default new TripsController();

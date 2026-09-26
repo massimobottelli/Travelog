@@ -24,6 +24,10 @@ router.get("/map", tripsController.getTripsOverviewMap);
 // POST /trips/map/recalculate — rebuild the cached overview aggregation
 router.post("/map/recalculate", tripsController.recalculateTripsOverviewMap);
 
+// GET /trips/:tripId/ics — ICS (iCalendar) export of a single trip
+// (registered before /:tripId so "ics" is not treated as an id)
+router.get("/:tripId/ics", tripsController.exportTripIcs);
+
 // GET /trips/:tripId — get trip details
 router.get("/:tripId", tripsController.getTrip);
 

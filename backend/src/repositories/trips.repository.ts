@@ -956,6 +956,77 @@ class TripsRepository {
 
     return { markers, bounds };
   }
+
+  /**
+   * Locality with the most photos in the trip interval (aggregated across
+   * all days). Combines presence photo counts (grouped by the same
+   * locality key used by the detail — name + county + region) and manual
+   * day localities (photoCount = 0). Returns null when the trip has no
+   * locality at all (manual trip without assigned localities).
+   */
+  async getTopLocalityForTrip(
+    tripId: number,
+    startDate: string,
+    endDate: string,
+  ): Promise<{ name: string; county: string | null; region: string | null; country: string | null; totalPhotos: number } | null> {
+    const result = await dbPool.query(
+      `WITH presence_agg AS (
+         SELECT l.name,
+                COALESCE(l.county, '') AS county_key,
+                COALESCE(l.region, '') AS region_key,
+                MAX(l.county) AS county,
+                MAX(l.region) AS region,
+                MAX(l.country) AS country,
+                SUM(p.photo_count)::int AS total_photos
+         FROM presences p
+         JOIN localities l ON l.id = p.locality_id
+         WHERE p.photo_date >= $2::date
+           AND p.photo_date <= $3::date
+         GROUP BY l.name, COALESCE(l.county, ''), COALESCE(l.region, '')
+       ),
+       manual_agg AS (
+         SELECT l.name,
+                COALESCE(l.county, '') AS county_key,
+                COALESCE(l.region, '') AS region_key,
+                MAX(l.county) AS county,
+                MAX(l.region) AS region,
+                MAX(l.country) AS country,
+                0::int AS total_photos
+         FROM manual_trip_days d
+         JOIN manual_trip_day_localities m ON m.day_id = d.id
+         JOIN localities l ON l.id = m.locality_id
+         WHERE d.trip_id = $1::int
+         GROUP BY l.name, COALESCE(l.county, ''), COALESCE(l.region, '')
+       ),
+       combined AS (
+         SELECT name, county_key, region_key, county, region, country, total_photos
+         FROM presence_agg
+         UNION ALL
+         SELECT m.name, m.county_key, m.region_key, m.county, m.region, m.country, m.total_photos
+         FROM manual_agg m
+         WHERE NOT EXISTS (
+           SELECT 1 FROM presence_agg p
+           WHERE p.name = m.name AND p.county_key = m.county_key AND p.region_key = m.region_key
+         )
+       )
+       SELECT name, county, region, country, SUM(total_photos)::int AS total_photos
+       FROM combined
+       GROUP BY name, county, region, country
+       ORDER BY total_photos DESC, name ASC
+       LIMIT 1`,
+      [tripId, startDate, endDate],
+    );
+
+    if (result.rows.length === 0) return null;
+    const row = result.rows[0];
+    return {
+      name: String(row.name),
+      county: row.county != null ? String(row.county) : null,
+      region: row.region != null ? String(row.region) : null,
+      country: row.country != null ? String(row.country) : null,
+      totalPhotos: Number(row.total_photos),
+    };
+  }
 }
 
 export default new TripsRepository();

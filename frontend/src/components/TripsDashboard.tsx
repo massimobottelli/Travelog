@@ -66,6 +66,11 @@ export interface TripsDashboardProps {
   onSplit: (trip: Trip) => void;
   onDelete: (trip: Trip) => void;
   /**
+   * Downloads the trip as an ICS calendar event. When provided, the
+   * "Aggiungi al Calendario" entry appears in the context menu.
+   */
+  onExportCalendar?: (trip: Trip) => void;
+  /**
    * When provided, every active trip exposes the inline day/locality
    * editing through the "Modifica viaggio" context-menu entry (§51): the
    * callback persists the full day list of the trip and refreshes the
@@ -97,6 +102,7 @@ export default function TripsDashboard({
   onEditDates,
   onSplit,
   onDelete,
+  onExportCalendar,
   onReplaceDays,
   mergeMode = false,
   selectedIds = [],
@@ -245,6 +251,9 @@ export default function TripsDashboard({
                         }
                         onSplit={() => onSplit(trip)}
                         onDelete={() => onDelete(trip)}
+                        onExportCalendar={
+                          onExportCalendar ? () => onExportCalendar(trip) : undefined
+                        }
                         mergeMode={mergeMode}
                         selected={selectedIds.includes(trip.id)}
                         onToggleSelected={

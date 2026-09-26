@@ -20,6 +20,7 @@ import {
   updateTrip,
   deleteTrip,
   exportTripsCsv,
+  exportTripIcs,
   createTrip,
   replaceTripDays,
   getTripMap,
@@ -368,6 +369,20 @@ export default function TripsPage() {
     }
   };
 
+  /**
+   * Download the ICS (iCalendar) export of a single trip. Errors are
+   * surfaced through the same page-level error message used by the other
+   * operations.
+   */
+  const handleExportCalendar = async (tripId: number): Promise<void> => {
+    setActionError(null);
+    try {
+      await exportTripIcs(tripId);
+    } catch (err: unknown) {
+      setActionError(errorToMessage(err));
+    }
+  };
+
   // ── Manual trip creation (modal) ─────────────────────────────────
   const openDaysModal = (): void => {
     setDaysModalError(null);
@@ -534,6 +549,9 @@ export default function TripsPage() {
         onDelete={(trip) => {
           setDialogMessage(null);
           setConfirmDelete({ id: trip.id, name: trip.name });
+        }}
+        onExportCalendar={(trip) => {
+          void handleExportCalendar(trip.id);
         }}
         onReplaceDays={handleReplaceDays}
         mergeMode={mergeMode}
