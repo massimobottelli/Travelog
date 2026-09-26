@@ -296,6 +296,86 @@ paths:
               schema:
                 $ref: "#/components/schemas/ApiError"
 
+  /data/export:
+    get:
+      tags: [Data]
+      operationId: exportData
+      summary: Export entire database as JSON backup
+      description: |
+        Consistent read-only JSON snapshot of every table
+        (REPEATABLE READ transaction). Usable while the app is serving;
+        does not block scans. The schema is not part of the backup
+        (it is reproduced by the versioned migrations); only the data
+        is exported.
+
+        The response is a JSON document with format, version, exportedAt
+        and one key per table containing its rows. The file is pretty-
+        printed (indented) for readability.
+      responses:
+        "200":
+          description: JSON backup document
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BackupDocument"
+        "500":
+          description: Unexpected internal error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /data/import:
+    post:
+      tags: [Data]
+      operationId: importData
+      summary: Import database from JSON backup
+      description: |
+        Full restore of a backup document in a single transaction:
+        TRUNCATE + inserts + sequence resync, committed together.
+        Any failure rolls back and leaves the existing data untouched.
+
+        The document is validated before the lock is taken, so an
+        invalid file never blocks scans. The photo root of the local
+        machine is preserved (the one in the backup is discarded).
+
+        Rejected while a scan is running.
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+              description: |
+                Raw JSON backup document produced by GET /data/export.
+                Content-Type must be application/octet-stream.
+      responses:
+        "200":
+          description: Import completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportResult"
+        "400":
+          description: Invalid backup document
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: Another scan is already running
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "500":
+          description: Unexpected internal error (rollback)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
   /trips:
     get:
       tags: [Trips]
@@ -1124,6 +1204,48 @@ components:
         details:
           type: object
           additionalProperties: true
+
+    BackupDocument:
+      type: object
+      additionalProperties: false
+      required: [format, version, exportedAt, tables]
+      properties:
+        format:
+          type: string
+          description: Backup format identifier (always "travelog-backup")
+          example: travelog-backup
+        version:
+          type: integer
+          description: Backup format version
+          example: 1
+        exportedAt:
+          type: string
+          description: Naive local timestamp of the export (YYYY-MM-DDTHH:mm:ss)
+          example: "2026-09-26T14:47:12"
+        tables:
+          type: object
+          description: One key per table containing an array of row objects
+          additionalProperties:
+            type: array
+            items:
+              type: object
+              additionalProperties: true
+
+    ImportResult:
+      type: object
+      additionalProperties: false
+      required: [totalRows, counts]
+      properties:
+        totalRows:
+          type: integer
+          description: Total number of rows restored across all tables
+          example: 1234
+        counts:
+          type: object
+          description: Row count per table
+          additionalProperties:
+            type: integer
+            example: 100
 
     HealthResponse:
       type: object

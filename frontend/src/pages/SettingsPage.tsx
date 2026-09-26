@@ -6,10 +6,10 @@
  * modifies existing trips; recalculation is an explicit user action.
  */
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, useRef, type FormEvent } from "react";
 import { getSettings, updateSettings } from "../api/settings";
 import { getConfig, updateConfig } from "../api/config";
-import { deleteAllData } from "../api/data";
+import { deleteAllData, exportData, importData } from "../api/data";
 import ExclusionZonesPanel from "../components/ExclusionZonesPanel";
 import type { Settings, RuntimeConfig } from "../api/client";
 import Loading from "../components/Loading";
@@ -35,6 +35,14 @@ export default function SettingsPage() {
   const [resetError, setResetError] = useState<string | null>(null);
   const [resetMessage, setResetMessage] = useState<string | null>(null);
 
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importMessage, setImportMessage] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -43,6 +51,7 @@ export default function SettingsPage() {
   useAutoDismiss(photoRootMessage, () => setPhotoRootMessage(null));
   useAutoDismiss(saveMessage, () => setSaveMessage(null));
   useAutoDismiss(resetMessage, () => setResetMessage(null));
+  useAutoDismiss(importMessage, () => setImportMessage(null));
 
   useEffect(() => {
     let active = true;
@@ -139,6 +148,40 @@ export default function SettingsPage() {
       setResetError(errorToMessage(err));
     } finally {
       setResetting(false);
+    }
+  };
+
+  const handleExportDatabase = async (): Promise<void> => {
+    setExporting(true);
+    setExportError(null);
+    try {
+      await exportData();
+    } catch (err: unknown) {
+      setExportError(errorToMessage(err));
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleImportDatabase = async (event: React.ChangeEvent<HTMLInputElement>): Promise<void> => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setImporting(true);
+    setImportError(null);
+    setImportMessage(null);
+    try {
+      const result = await importData(file);
+      setImportMessage(
+        `Database ripristinato: ${result.totalRows} righe importate. Ricarica la pagina per vedere i dati aggiornati.`,
+      );
+      // Reset the file input so the same file can be selected again
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    } catch (err: unknown) {
+      setImportError(errorToMessage(err));
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -251,45 +294,137 @@ export default function SettingsPage() {
 
       <ExclusionZonesPanel />
 
-      <section className="panel panel-danger">
-        <h2>Manutenzione</h2>
+      <section className="panel">
+        <h2>Database</h2>
         <p className="hint">
-          Cancella <strong>definitivamente</strong> tutte le foto catalogate, le scansioni, gli
-          errori, le località, i viaggi e le impostazioni. Il percorso foto configurato non viene
-          modificato. L'operazione non è reversibile.
+          Esporta, importa o cancella i dati del database. Il percorso foto configurato non viene
+          modificato dalle operazioni di import/export.
         </p>
 
-        {!confirmingReset ? (
-          <button type="button" className="danger" onClick={() => setConfirmingReset(true)}>
-            Cancella database
-          </button>
-        ) : (
-          <div className="confirm-box" role="alertdialog" aria-label="Conferma cancellazione">
-            <p>
-              Sei sicuro? Tutti i dati catalogati verranno eliminati in modo irreversibile. Questa
-              azione non può essere annullata.
-            </p>
-            <div className="confirm-actions">
-              <button
-                type="button"
-                className="danger"
-                onClick={handleResetDatabase}
-                disabled={resetting}
-              >
-                {resetting ? "Cancellazione…" : "Sì, cancella tutto"}
-              </button>
-              <button
-                type="button"
-                className="secondary"
-                onClick={() => setConfirmingReset(false)}
-                disabled={resetting}
-              >
-                Annulla
-              </button>
+        <div className="database-cards">
+          {/* Export Card */}
+          <div className="database-card">
+            <div className="database-card-header">
+              <div className="database-card-icon database-card-icon--export">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+              </div>
+              <div>
+                <h3>Esporta Database</h3>
+                <p className="database-card-subtitle">Scarica backup JSON</p>
+              </div>
             </div>
+            <p className="database-card-description">
+              Esporta tutti i dati in un file JSON per backup o migrazione.
+            </p>
+            <button
+              type="button"
+              className="database-card-button database-card-button--export"
+              onClick={handleExportDatabase}
+              disabled={exporting}
+            >
+              {exporting ? "Esportazione…" : "Esporta"}
+            </button>
           </div>
-        )}
 
+          {/* Import Card */}
+          <div className="database-card">
+            <div className="database-card-header">
+              <div className="database-card-icon database-card-icon--import">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="17 8 12 3 7 8" />
+                  <line x1="12" y1="3" x2="12" y2="15" />
+                </svg>
+              </div>
+              <div>
+                <h3>Importa Database</h3>
+                <p className="database-card-subtitle">Ripristina da backup</p>
+              </div>
+            </div>
+            <p className="database-card-description">
+              Carica un file JSON di backup. Sovrascrive tutti i dati esistenti.
+            </p>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".json,application/json"
+              onChange={handleImportDatabase}
+              disabled={importing}
+              style={{ display: "none" }}
+              aria-label="Seleziona file di backup"
+            />
+            <button
+              type="button"
+              className="database-card-button database-card-button--import"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={importing}
+            >
+              {importing ? "Importazione…" : "Importa"}
+            </button>
+          </div>
+
+          {/* Delete Card */}
+          <div className="database-card database-card--danger">
+            <div className="database-card-header">
+              <div className="database-card-icon database-card-icon--delete">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="3 6 5 6 21 6" />
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                  <line x1="10" y1="11" x2="10" y2="17" />
+                  <line x1="14" y1="11" x2="14" y2="17" />
+                </svg>
+              </div>
+              <div>
+                <h3>Cancella Database</h3>
+                <p className="database-card-subtitle">Svuota tutti i dati</p>
+              </div>
+            </div>
+            <p className="database-card-description">
+              Cancella tutti i dati: foto, scansioni, località, viaggi e impostazioni.
+            </p>
+            {!confirmingReset ? (
+              <button
+                type="button"
+                className="database-card-button database-card-button--delete"
+                onClick={() => setConfirmingReset(true)}
+              >
+                Cancella
+              </button>
+            ) : (
+              <div className="confirm-box" role="alertdialog" aria-label="Conferma cancellazione">
+                <p>
+                  Sei sicuro? Tutti i dati catalogati verranno eliminati in modo irreversibile.
+                </p>
+                <div className="confirm-actions">
+                  <button
+                    type="button"
+                    className="danger"
+                    onClick={handleResetDatabase}
+                    disabled={resetting}
+                  >
+                    {resetting ? "Cancellazione…" : "Sì, cancella tutto"}
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={() => setConfirmingReset(false)}
+                    disabled={resetting}
+                  >
+                    Annulla
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {exportError && <ErrorAlert message={exportError} />}
+        {importMessage && <p className="alert alert-success">{importMessage}</p>}
+        {importError && <ErrorAlert message={importError} />}
         {resetMessage && <p className="alert alert-success">{resetMessage}</p>}
         {resetError && <ErrorAlert message={resetError} />}
       </section>

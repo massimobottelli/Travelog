@@ -18,9 +18,10 @@ risposte reali catturate da un'istanza in esecuzione.
 10. [Zone di esclusione](#zone-di-esclusione)
 11. [Località](#località)
 12. [Cancellazione dati](#cancellazione-dati)
-13. [Contratto errori comune](#contratto-errori-comune)
-14. [Schema completo endpoint](#schema-completo-endpoint)
-15. [Fase 4 — Geographic data + geocoding](#fase-4--geographic-data--geocoding)
+13. [Backup e ripristino database](#backup-e-ripristino-database)
+14. [Contratto errori comune](#contratto-errori-comune)
+15. [Schema completo endpoint](#schema-completo-endpoint)
+16. [Fase 4 — Geographic data + geocoding](#fase-4--geographic-data--geocoding)
 
 ---
 
@@ -1053,6 +1054,125 @@ curl -X DELETE http://localhost:3000/api/data
 
 ---
 
+## Backup e ripristino database
+
+Operazioni di manutenzione per esportare e importare l'intero database in formato
+JSON. Utili per backup, migrazione tra istanze o ripristino da snapshot.
+
+Il formato del backup è un documento JSON con struttura:
+
+```json
+{
+  "format": "travelog-backup",
+  "version": 1,
+  "exportedAt": "2026-09-26T14:47:12",
+  "tables": {
+    "localities": [...],
+    "photos": [...],
+    "scans": [...],
+    ...
+  }
+}
+```
+
+Il file è **pretty-printed** (indentato) per leggibilità. Lo schema del database
+non è incluso nel backup: viene riprodotto dalle migration versionate.
+
+### `GET /api/data/export`
+
+Esporta l'intero database in un file JSON. L'operazione è una transazione
+**read-only REPEATABLE READ**: produce uno snapshot consistente senza bloccare
+le scansioni in corso.
+
+```bash
+curl -o travelog-backup.json http://localhost:3000/api/data/export
+```
+
+**Risposta (200):** file JSON scaricabile con nome `travelog-backup-YYYYMMDD-HHMMSS.json`.
+
+Il file contiene tutte le righe di ogni tabella (localities, photos, scans,
+scan_errors, geocoding_cache, presences, trips, manual_trip_days,
+manual_trip_day_localities, trip_day_exclusions, trip_history, settings,
+exclusion_zones, trips_overview_map_cache).
+
+**Errori:** `500` `INTERNAL_ERROR` per errori inattesi.
+
+### `POST /api/data/import`
+
+Ripristina il database da un file JSON di backup. L'operazione è **atomica**:
+esegue TRUNCATE + insert + risincronizzazione sequenze in una singola
+transazione. Qualsiasi errore causa il rollback e lascia i dati esistenti
+intatti.
+
+Il documento viene validato prima di acquisire il lock: un file invalido non
+blocca mai le scansioni. Il photo root locale viene preservato (quello nel
+backup viene scartato, perché specifico della macchina di origine).
+
+```bash
+curl -X POST http://localhost:3000/api/data/import \
+  -H "Content-Type: application/octet-stream" \
+  --data-binary @travelog-backup.json
+```
+
+**Risposta (200):**
+
+```json
+{
+  "totalRows": 1234,
+  "counts": {
+    "localities": 50,
+    "photos": 1000,
+    "scans": 5,
+    "scan_errors": 2,
+    "geocoding_cache": 800,
+    "presences": 400,
+    "trips": 20,
+    "manual_trip_days": 30,
+    "manual_trip_day_localities": 45,
+    "trip_day_exclusions": 3,
+    "trip_history": 15,
+    "settings": 1,
+    "exclusion_zones": 4,
+    "trips_overview_map_cache": 1
+  }
+}
+```
+
+**Errori:**
+
+| HTTP | Codice | Causa |
+|------|--------|-------|
+| 400 | `VALIDATION_ERROR` | File JSON non valido o formato backup non riconosciuto |
+| 400 | `VALIDATION_ERROR` | Versione backup non supportata |
+| 409 | `SCAN_ALREADY_RUNNING` | Una scansione è in corso |
+| 500 | `INTERNAL_ERROR` | Errore durante il ripristino (transazione rollback) |
+
+**Esempio di errore (file non valido):**
+
+```bash
+curl -s -w "\nHTTP %{http_code}" -X POST http://localhost:3000/api/data/import \
+  -H "Content-Type: application/octet-stream" \
+  --data-binary "not a backup"
+```
+
+```
+{"code":"VALIDATION_ERROR","message":"Il file selezionato non è un backup JSON valido.","details":{}}
+HTTP 400
+```
+
+**Note importanti:**
+
+- Dopo l'import, le sequenze degli ID sono risincronizzate per evitare collisioni
+  con i nuovi insert.
+- Il photo root nel backup viene sostituito con quello locale (stessa policy di
+  `DELETE /api/data`).
+- L'operazione è idempotente: importare lo stesso backup più volte produce lo
+  stesso risultato.
+- Le righe della tabella `settings` vengono inserite con `id=1` (singleton);
+  se già presente, viene aggiornata preservando il photo root locale.
+
+---
+
 ## Contratto errori comune
 
 Tutti gli errori API seguono lo stesso contratto:
@@ -1131,6 +1251,8 @@ Gli errori non espongono mai stack trace, query SQL o dettagli del filesystem.
 | `GET` | `/api/localities/autocomplete` | Autocomplete Geoapify globale | 200 |
 | `POST` | `/api/localities/resolve` | Persiste un place Geoapify | 200 |
 | `DELETE` | `/api/data` | Cancella tutti i dati catalogati | 204 |
+| `GET` | `/api/data/export` | Export database JSON (backup) | 200 |
+| `POST` | `/api/data/import` | Import database da JSON (ripristino) | 200 |
 
 
 

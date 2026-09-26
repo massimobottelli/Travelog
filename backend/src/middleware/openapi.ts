@@ -97,7 +97,8 @@ export function createOpenApiValidator(): Router {
       });
       const body = operation.requestBody ? resolve<Body>(operation.requestBody) : undefined;
       const schema = body?.content["application/json"]?.schema;
-      if (body && !schema) throw new Error("Unsupported OpenAPI request media type");
+      // Non-JSON media types (e.g. application/octet-stream) are allowed but
+      // not schema-validated by the OpenAPI middleware.
       const validateBody = schema ? compile(bodies, schema) : undefined;
       route[method]((req, _res, next) => {
         const errors: { path: string; message: string }[] = [];

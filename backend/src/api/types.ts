@@ -204,6 +204,62 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/data/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export entire database as JSON backup
+         * @description Consistent read-only JSON snapshot of every table
+         *     (REPEATABLE READ transaction). Usable while the app is serving;
+         *     does not block scans. The schema is not part of the backup
+         *     (it is reproduced by the versioned migrations); only the data
+         *     is exported.
+         *
+         *     The response is a JSON document with format, version, exportedAt
+         *     and one key per table containing its rows. The file is pretty-
+         *     printed (indented) for readability.
+         */
+        get: operations["exportData"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import database from JSON backup
+         * @description Full restore of a backup document in a single transaction:
+         *     TRUNCATE + inserts + sequence resync, committed together.
+         *     Any failure rolls back and leaves the existing data untouched.
+         *
+         *     The document is validated before the lock is taken, so an
+         *     invalid file never blocks scans. The photo root of the local
+         *     machine is preserved (the one in the backup is discarded).
+         *
+         *     Rejected while a scan is running.
+         */
+        post: operations["importData"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/trips": {
         parameters: {
             query?: never;
@@ -660,6 +716,40 @@ export interface components {
             message: string;
             details?: {
                 [key: string]: unknown;
+            };
+        };
+        BackupDocument: {
+            /**
+             * @description Backup format identifier (always "travelog-backup")
+             * @example travelog-backup
+             */
+            format: string;
+            /**
+             * @description Backup format version
+             * @example 1
+             */
+            version: number;
+            /**
+             * @description Naive local timestamp of the export (YYYY-MM-DDTHH:mm:ss)
+             * @example 2026-09-26T14:47:12
+             */
+            exportedAt: string;
+            /** @description One key per table containing an array of row objects */
+            tables: {
+                [key: string]: {
+                    [key: string]: unknown;
+                }[];
+            };
+        };
+        ImportResult: {
+            /**
+             * @description Total number of rows restored across all tables
+             * @example 1234
+             */
+            totalRows: number;
+            /** @description Row count per table */
+            counts: {
+                [key: string]: number;
             };
         };
         HealthResponse: {
@@ -1444,6 +1534,86 @@ export interface operations {
             };
             /** @description Another scan is already running */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    exportData: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description JSON backup document */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackupDocument"];
+                };
+            };
+            /** @description Unexpected internal error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    importData: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/octet-stream": string;
+            };
+        };
+        responses: {
+            /** @description Import completed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportResult"];
+                };
+            };
+            /** @description Invalid backup document */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Another scan is already running */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unexpected internal error (rollback) */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };
