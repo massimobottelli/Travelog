@@ -9,8 +9,8 @@
 import { eq, desc, and } from "drizzle-orm";
 import { promises as fs } from "node:fs";
 import { isInsideRoot, validateScanDirectory } from "../scans/path-guard.js";
-import { db, pool as dbPool } from "../db/client.js";
-import { scans, scanStatusEnum } from "../db/schema.js";
+import { pool as dbPool } from "../db/client.js";
+import { scanStatusEnum } from "../db/schema.js";
 import scansRepository from "../repositories/scans.repository.js";
 import photosRepository from "../repositories/photos.repository.js";
 import scanErrorsRepository, {
@@ -79,22 +79,9 @@ class ScansService {
     if (!acquired) {
       throw new ConflictError("Another scan is already running", "SCAN_ALREADY_RUNNING");
     }
-    let scanRecord: ScanRecord | null = null;
+    let scanRecord: ScanRecord;
     try {
-      const result = await db
-        .insert(scans)
-        .values({
-          folder,
-          startedAt: new Date(),
-          status: scanStatusEnum.enumValues[1],
-          filesAnalyzed: 0,
-          newPhotos: 0,
-          existingPhotos: 0,
-          excludedPhotos: 0,
-          errors: 0,
-        })
-        .returning();
-      scanRecord = result[0];
+      scanRecord = await scansRepository.createScan(folder);
     } catch (err) {
       await scansRepository.releaseLock(this.lockID).catch(() => undefined);
       throw err;

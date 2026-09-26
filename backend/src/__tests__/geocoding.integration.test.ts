@@ -5,6 +5,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { pool as pgPool } from "../db/client.js";
 import geocodingRepo from "../repositories/geocoding.repository.js";
+import geocodingService from "../services/geocoding.service.js";
 
 describe("Geocoding Repository", () => {
   beforeEach(async () => {
@@ -113,5 +114,37 @@ describe("Geocoding Repository", () => {
     } finally {
       await pgPool.query(`DELETE FROM localities WHERE region = 'Test Region X'`);
     }
+  });
+});
+
+describe("GeocodingService normalized-hash cache", () => {
+  const HASH = "45.56:9.17";
+
+  beforeEach(async () => {
+    await pgPool.query("DELETE FROM geocoding_cache");
+    await pgPool.query(`DELETE FROM localities WHERE locality_hash = $1`, [HASH]);
+  });
+
+  it("resolves nearby coordinates to the same locality without a second geocoder call", async () => {
+    const locality = await geocodingRepo.upsertLocality({
+      localityHash: HASH,
+      countryCode: "IT",
+      name: "Milano Centro",
+      adminLevel: 4,
+      region: "Lombardia",
+    });
+
+    // Two distinct GPS points that normalize into the same ~1 km bucket.
+    const first = await geocodingService.reverseGeocode(45.5621, 9.1742);
+    const second = await geocodingService.reverseGeocode(45.5634, 9.1749);
+
+    expect(first.localityId).toBe(locality.id);
+    expect(second.localityId).toBe(locality.id);
+    expect(first.name).toBe("Milano Centro");
+    expect(second.name).toBe("Milano Centro");
+
+    // The hash hit short-circuits before writing the per-coordinate cache.
+    const { rows } = await pgPool.query("SELECT count(*)::int AS n FROM geocoding_cache");
+    expect(rows[0].n).toBe(0);
   });
 });

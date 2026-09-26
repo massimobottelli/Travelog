@@ -24,14 +24,22 @@ export const db = drizzle(pool, {
 });
 
 /**
- * Gracefully close the pool on process exit.
+ * Gracefully close the pool on process exit. pool.end() is awaited so the
+ * exit does not truncate in-flight queries (e.g. a scan's final update).
+ * Idempotent: a repeated signal must not call end() twice (pg-pool rejects).
  */
-process.on("SIGINT", () => {
-  pool.end();
-  process.exit(0);
-});
+let shuttingDown = false;
 
-process.on("SIGTERM", () => {
-  pool.end();
+async function shutdown(): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  try {
+    await pool.end();
+  } catch {
+    // Pool already closed by a previous signal — nothing left to do.
+  }
   process.exit(0);
-});
+}
+
+process.on("SIGINT", () => void shutdown());
+process.on("SIGTERM", () => void shutdown());

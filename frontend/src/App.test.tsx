@@ -298,11 +298,11 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Impostazioni" }));
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Cancella database" })).not.toBeNull();
+      expect(screen.getByRole("button", { name: "Cancella" })).not.toBeNull();
     });
 
     // First click only shows the confirmation — no DELETE yet
-    fireEvent.click(screen.getByRole("button", { name: "Cancella database" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancella" }));
     expect(screen.getByRole("alertdialog")).not.toBeNull();
     expect(fetchMock.mock.calls.filter(([u]) => String(u).includes("/api/data"))).toHaveLength(0);
 
@@ -311,7 +311,7 @@ describe("App", () => {
     expect(screen.queryByRole("alertdialog")).toBeNull();
 
     // Confirming triggers the DELETE and shows the success message
-    fireEvent.click(screen.getByRole("button", { name: "Cancella database" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancella" }));
     fireEvent.click(screen.getByRole("button", { name: "Sì, cancella tutto" }));
 
     await waitFor(() => {

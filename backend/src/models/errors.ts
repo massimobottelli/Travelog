@@ -7,7 +7,6 @@
 
 export type ErrorCode =
   | "VALIDATION_ERROR"
-  | "BANK_NOT_FOUND"
   | "SCAN_NOT_FOUND"
   | "SCAN_ALREADY_RUNNING"
   | "SCAN_NOT_RUNNING"
@@ -93,9 +92,12 @@ export class NotFoundError extends AppError {
 
 /**
  * Conflict error (409) — e.g., concurrent scan, overlapping trips.
+ * The machine-readable code is required: every 409 must carry the exact
+ * domain reason (SCAN_ALREADY_RUNNING, SCAN_NOT_RUNNING, TRIP_OVERLAP,
+ * TRIP_NOT_ACTIVE, ...).
  */
 export class ConflictError extends AppError {
-  constructor(message: string, code: ErrorCode = "BANK_NOT_FOUND") {
+  constructor(message: string, code: ErrorCode) {
     super(code, message, 409);
     this.name = "ConflictError";
   }

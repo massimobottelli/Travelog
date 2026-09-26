@@ -13,7 +13,7 @@
  * GlobalActionMenu) contain no business logic.
  */
 
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import {
   listTrips,
   getTrip,
@@ -50,6 +50,9 @@ export default function TripsPage() {
 
   const [trips, setTrips] = useState<Trip[] | null>(null);
   const [search, setSearch] = useState("");
+  // Debounced copy of `search`: the server list query runs against this
+  // value, not against every keystroke.
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -131,7 +134,11 @@ export default function TripsPage() {
   }, []);
   useAutoDismiss(dialogMessage, closeDialogAfterNotification);
 
+  const reloadSeq = useRef(0);
   const reload = useCallback(async (query: string, requestedPage: number) => {
+    // Guard against out-of-order responses: a newer reload supersedes this
+    // one, so a stale result must not overwrite fresher state.
+    const seq = ++reloadSeq.current;
     setLoading(true);
     setLoadError(null);
     try {
@@ -141,19 +148,29 @@ export default function TripsPage() {
         pageSize: PAGE_SIZE,
         page: requestedPage,
       });
+      if (seq !== reloadSeq.current) return;
       setTrips(result.items);
       setTotalPages(Math.max(1, Math.ceil(result.total / PAGE_SIZE)));
       setSelectedIds((ids) => ids.filter((id) => result.items.some((t) => t.id === id)));
     } catch (err: unknown) {
+      if (seq !== reloadSeq.current) return;
       setLoadError(errorToMessage(err));
     } finally {
-      setLoading(false);
+      if (seq === reloadSeq.current) setLoading(false);
     }
   }, []);
 
+  // Debounce the server search: a full list re-query on every keystroke is
+  // wasteful (one request per character); wait for a typing pause instead.
   useEffect(() => {
-    void reload(search, page);
-  }, [reload, search, page]);
+    const SEARCH_DEBOUNCE_MS = 300;
+    const timer = window.setTimeout(() => setDebouncedSearch(search), SEARCH_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  useEffect(() => {
+    void reload(debouncedSearch, page);
+  }, [reload, debouncedSearch, page]);
 
   // Best-effort refresh only: a 202 does not signal job completion.
   useEffect(() => {
@@ -161,10 +178,10 @@ export default function TripsPage() {
     const RECALCULATION_REFRESH_DELAY_MS = 2000;
     const timer = window.setTimeout(() => {
       setRecalcRefreshPending(false);
-      void reload(search, page);
+      void reload(debouncedSearch, page);
     }, RECALCULATION_REFRESH_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, [recalcRefreshPending, reload, search, page]);
+  }, [recalcRefreshPending, reload, debouncedSearch, page]);
 
   // Panoramic overview of all active trips: loaded once at startup and
   // refreshed only after operations that change the set of trips. It is
@@ -209,21 +226,28 @@ export default function TripsPage() {
     setPage(Math.min(Math.max(1, target), totalPages));
   };
 
+  const detailSeq = useRef(0);
   const loadDetail = useCallback(async (tripId: number) => {
+    // Guard against out-of-order responses when switching trips quickly.
+    const seq = ++detailSeq.current;
     setDetailLoading(true);
     setDetailError(null);
     try {
       const detailData = await getTrip(tripId);
+      if (seq !== detailSeq.current) return;
       setDetail(detailData);
       // The map is secondary: a failure loading it must not prevent the
       // trip detail from being shown.
-      setMapData(await getTripMap(tripId).catch(() => null));
+      const mapDataLoaded = await getTripMap(tripId).catch(() => null);
+      if (seq !== detailSeq.current) return;
+      setMapData(mapDataLoaded);
     } catch (err: unknown) {
+      if (seq !== detailSeq.current) return;
       setDetailError(errorToMessage(err));
       setDetail(null);
       setMapData(null);
     } finally {
-      setDetailLoading(false);
+      if (seq === detailSeq.current) setDetailLoading(false);
     }
   }, []);
 
@@ -237,8 +261,8 @@ export default function TripsPage() {
     setSelectedTripId(null);
     setDetail(null);
     setMapData(null);
-    await Promise.all([reload(search, page), loadOverview()]);
-  }, [reload, search, page, loadOverview]);
+    await Promise.all([reload(debouncedSearch, page), loadOverview()]);
+  }, [reload, debouncedSearch, page, loadOverview]);
 
   const handleDialogSubmit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
@@ -337,7 +361,7 @@ export default function TripsPage() {
       setDetail(detailData);
       setMapData(mapDataLoaded);
     }
-    await Promise.all([reload(search, page), loadOverview()]);
+    await Promise.all([reload(debouncedSearch, page), loadOverview()]);
   };
 
   const handleRecalculate = async (period?: RecalculateRequest): Promise<void> => {
@@ -395,7 +419,7 @@ export default function TripsPage() {
     try {
       await createTrip({ name: payload.name || undefined, days: payload.days });
       setDialogMessage("Viaggio creato.");
-      await Promise.all([reload(search, page), loadOverview()]);
+      await Promise.all([reload(debouncedSearch, page), loadOverview()]);
     } catch (err: unknown) {
       setDaysModalError(errorToMessage(err));
     } finally {

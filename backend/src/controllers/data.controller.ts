@@ -5,6 +5,7 @@
 import type { Request, Response } from "express";
 import dataResetService from "../services/data-reset.service.js";
 import dataBackupService from "../services/data-backup.service.js";
+import { readBodyWithLimit, MAX_IMPORT_BYTES } from "../utils/request-body.js";
 
 class DataController {
   async deleteAllData(_req: Request, res: Response): Promise<void> {
@@ -27,13 +28,12 @@ class DataController {
    * POST /data/import — full restore of a backup document.
    * The body is read as raw text (application/octet-stream) so the JSON
    * is not pre-parsed by express.json(); validation happens in the service.
+   * The upload size is capped (memory-DoS protection): an oversized body
+   * is rejected with 400 VALIDATION_ERROR, a response already declared
+   * by the OpenAPI contract of this operation.
    */
   async importData(req: Request, res: Response): Promise<void> {
-    const chunks: Buffer[] = [];
-    for await (const chunk of req) {
-      chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
-    }
-    const buffer = Buffer.concat(chunks);
+    const buffer = await readBodyWithLimit(req, MAX_IMPORT_BYTES);
 
     const result = await dataBackupService.importAllData(buffer);
     res.status(200).json(result);

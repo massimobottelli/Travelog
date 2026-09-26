@@ -165,3 +165,22 @@ Protocollo per ogni task:
 | P3 Robustezza React                       | ✅ Completato 2026-09-17 | Backend 219/219, frontend 161/161; regressioni verificate anche in negativo; type check, build, Prettier e diff check OK                    |
 | P4 Validazione AJV                        | ✅ Completato 2026-09-17 | Backend 229/229, frontend 161/161; 13 test di validazione; correzioni contrattuali autorizzate; type check, build, Prettier e diff check OK |
 | Igiene I1–I5                              | ✅ Completato 2026-09-17 | D1/D4/D5 confermate; PostgreSQL test ricreato e migrato; backend 240/240, frontend 161/161; build e type check OK                           |
+| Audit 2026-09-26 (residui + perf/security) | ✅ Completato 2026-09-26 | D1 (cache geocoding per hash normalizzato) e D2 (cap import → 400) confermate dal proprietario; backend 306/306, frontend 174/174; build, type check e Prettier OK |
+
+---
+
+## Audit 2026-09-26 — residui e ottimizzazioni
+
+Secondo audit su backend/frontend, su base verde del 17/09 (backend 300/300, frontend 171/172 con un test stantio pre-esistente). Decisioni confermate dal proprietario: **D1** = lookup geocoding per hash normalizzato; **D2** = cap dimensione su `/data/import` con risposta `400` (già nel contratto OpenAPI, nessun cambio di `openapi/openapi.yaml`).
+
+Correzioni applicate (un task alla volta, suite verdi):
+
+1. **Test stantio (frontend).** `frontend/src/App.test.tsx`: il redesign della UI aveva rinominato il bottone "Cancella database" → "Cancella"; il test è stato riallineato mantenendo identiche le asserzioni comportamentali (conferma esplicita con `alertdialog` + "Sì, cancella tutto" + "Annulla").
+2. **Sicurezza (backend).** `POST /data/import`: body raw senza limite → memory-DoS. Aggiunto `backend/src/utils/request-body.ts` (`readBodyWithLimit`, cap 256 MB, risposta `400 VALIDATION_ERROR`) + unit test dedicati. Nessun cambio di contratto.
+3. **Bug/qualità (backend).** Rimosso `BANK_NOT_FOUND` (residuo di template "bank") dall'unione `ErrorCode`; `ConflictError` ora richiede il `code` esplicito (nessun default errato). Tutti i 12 caller passavano già il codice.
+4. **Bug async (backend).** `GeocodingService` costruisce ora il geocoder in modo sincrono (import statico): eliminata la finestra di startup in cui `this.geocoder` era `null` e le prime foto venivano saltate silenziosamente.
+5. **Performance (backend, D1).** `reverseGeocode` risolve prima la località per hash normalizzato (`getLocalityByHash`) e chiama Geoapify solo in caso di miss: una sola chiamata serve molte foto vicine (~1 km). Eventi `geocoding.cache.hit/miss` (regola §31). Test d'integrazione aggiunto in `geocoding.integration.test.ts`.
+6. **Bug async (frontend).** `TripsPage`: guard anti-stale (`reloadSeq`/`detailSeq`) contro risposte out-of-order + debounce (300 ms) della ricerca server. Test `frontend/src/pages/__tests__/trips-page.test.tsx` (debounce + risposta stantia ignorata).
+7. **Igiene.** `ScansService.startScan` riusa `scansRepository.createScan` (rimossa la duplicazione inline + import `db`/`scans` non più usati); `db/client.ts` shutdown idempotente con `pool.end()` atteso; `render.yaml` ripulito da `cp backend/src/openapi.json` (file inesistente, mascherato da `|| true`) e dalle env var mai lette `FRONTEND_URL`/`STATIC_FILES_PATH`.
+
+Verifiche: backend **306/306** (PostgreSQL reale `travelog_test` ricreato e migrato), frontend **174/174**, `tsc` backend e frontend puliti, build di produzione OK, Prettier pulito sui file toccati, `git diff --check` pulito, nessuna modifica non correlata.

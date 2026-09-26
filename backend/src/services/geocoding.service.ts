@@ -9,6 +9,7 @@ import geocodingRepository from "../repositories/geocoding.repository.js";
 import { normalizeCoordinates, makeLocalityHash } from "../utils/geocoding.js";
 import logger from "../config/logger.js";
 import type { Locality, ReverseGeocoder } from "../domain/reverse-geocoder.js";
+import { GeoapifyReverseGeocoder } from "../infrastructure/geocoder/geoapify-reverse-geocoder.js";
 import {
   GeoapifyAutocomplete,
   type LocalitySuggestion,
@@ -27,18 +28,14 @@ export interface ReverseGeocodeResult {
 }
 
 class GeocodingService {
-  private geocoder: ReverseGeocoder | null = null;
+  private readonly geocoder: ReverseGeocoder | null;
 
   constructor(geoapifyApiKey: string | null) {
-    if (geoapifyApiKey) {
-      import("../infrastructure/geocoder/geoapify-reverse-geocoder.js")
-        .then((m) => {
-          this.geocoder = new m.GeoapifyReverseGeocoder(geoapifyApiKey);
-        })
-        .catch(() => {
-          logger.warn("geocoding.module_load_failed");
-        });
-    }
+    // Static construction: the previous dynamic import() assigned the
+    // geocoder asynchronously and left a startup window in which
+    // this.geocoder was still null — the first photos processed in that
+    // window were silently skipped by the geocoding pipeline.
+    this.geocoder = geoapifyApiKey ? new GeoapifyReverseGeocoder(geoapifyApiKey) : null;
   }
 
   /**
@@ -48,9 +45,30 @@ class GeocodingService {
     const { normalizedLatitude, normalizedLongitude } = normalizeCoordinates(latitude, longitude);
     const localityHash = makeLocalityHash(normalizedLatitude, normalizedLongitude);
 
-    // Check cache first (by exact original coordinates)
+    // 1) Normalized-hash locality (primary cache): nearby GPS points share
+    //    the same ~1 km bucket and therefore the same locality, so a single
+    //    Geoapify call serves many photos. This is the documented intent of
+    //    normalizeCoordinates (utils/geocoding.ts).
+    const byHash = await geocodingRepository.getLocalityByHash(localityHash);
+    if (byHash) {
+      logger.debug({ localityHash }, "geocoding.cache.hit");
+      return {
+        localityId: byHash.id,
+        localityHash,
+        countryCode: byHash.countryCode,
+        countryFull: byHash.country,
+        name: byHash.name,
+        county: byHash.county,
+        adminLevel: byHash.adminLevel,
+        region: byHash.region,
+      };
+    }
+
+    // 2) Exact-coordinate cache: a photo already geocoded in a previous
+    //    scan whose locality row was since removed or re-keyed.
     const cached = await geocodingRepository.getGeocodeCacheEntry(latitude, longitude);
     if (cached && cached.localityId !== null) {
+      logger.debug({ localityHash }, "geocoding.cache.hit");
       return {
         localityId: cached.localityId,
         localityHash,
@@ -62,6 +80,8 @@ class GeocodingService {
         region: null,
       };
     }
+
+    logger.debug({ localityHash }, "geocoding.cache.miss");
 
     let localityId: number | null = null;
     let name: string | null = null;
